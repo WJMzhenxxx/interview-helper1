@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  # PostgreSQL数据库
+  postgres:
+    image: postgres:17.5
+    container_name: ai-interview-postgres-dev
+    environment:
+      POSTGRES_DB: ai_interview_helper
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: root
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --lc-collate=C --lc-ctype=C"
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+      - ./backend/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5462:5432"
+    networks:
+      - ai-interview-dev-network
+
+  # Redis缓存
+  redis:
+    image: redis:7.4-alpine
+    container_name: ai-interview-redis-dev
+    ports:
+      - "6389:6379"
+    networks:
+      - ai-interview-dev-network
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_dev_data:/data
+
+  # 后端API服务 (开发模式)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ai-interview-backend-dev
+    environment:
+      DATABASE_URL: postgresql://postgres:root@postgres:5432/ai_interview_helper
+      REDIS_URL: redis://redis:6379
+      SECRET_KEY: ai-interview-helper-secret-key-dev-2024
+      ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: 30
+      CORS_ORIGINS: '["http://localhost:5173", "http://localhost:3000", "http://localhost:8080"]'
+      DEBUG: "True"
+    ports:
+      - "9000:9000"
+    networks:
+      - ai-interview-dev-network
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - ./backend:/app:rw
+      - /app/venv
+    restart: unless-stopped
+    command: python run_server.py
+    stdin_open: true
+    tty: true
+
+volumes:
+  postgres_dev_data:
+    driver: local
+  redis_dev_data:
+    driver: local
+
+networks:
+  ai-interview-dev-network:
+    driver: bridge
