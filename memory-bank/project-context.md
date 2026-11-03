@@ -160,7 +160,6 @@ AI面试助手是一个跨端应用，基于React、ANTD和zustand开发，旨�
 - **Pydantic**: 数据验证库
 - **Uvicorn**: ASGI服务器
 - **WebSocket**: 实时通信支持
-- **Redis**: 缓存数据库
 
 ### 外部API集成
 
@@ -184,7 +183,6 @@ AI面试助手是一个跨端应用，基于React、ANTD和zustand开发，旨�
 - **Node.js 16+** (前端开发)
 - **Python 3.9+** (后端开发)
 - **PostgreSQL 14+** (数据库)
-- **Redis 6+** (缓存)
 - **Git** (版本控制)
 
 ### 性能优化策略

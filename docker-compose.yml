@@ -23,23 +23,6 @@ services:
       timeout: 10s
       retries: 5
 
-  # Redis缓存
-  redis:
-    image: redis:7.4-alpine
-    container_name: ai-interview-redis
-    ports:
-      - "6379:6379"
-    networks:
-      - ai-interview-network
-    command: redis-server --appendonly yes
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-
   # 后端API服务
   backend:
     build:
@@ -48,7 +31,6 @@ services:
     container_name: ai-interview-backend
     environment:
       DATABASE_URL: postgresql://postgres:root@postgres:5432/ai_interview_helper
-      REDIS_URL: redis://redis:6379
       SECRET_KEY: ai-interview-helper-secret-key-please-change-in-production-2024
       ALGORITHM: HS256
       ACCESS_TOKEN_EXPIRE_MINUTES: 30
@@ -59,8 +41,6 @@ services:
       - ai-interview-network
     depends_on:
       postgres:
-        condition: service_healthy
-      redis:
         condition: service_healthy
     volumes:
       - ./backend:/app
@@ -74,8 +54,6 @@ services:
 
 volumes:
   postgres_data:
-    driver: local
-  redis_data:
     driver: local
 
 networks:

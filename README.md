@@ -22,7 +22,6 @@ AI面试助手是一个基于React的智能面试准备工具，提供实时语�
 ### 后端技术栈
 - **FastAPI** - 高性能Python Web框架
 - **PostgreSQL** - 关系型数据库
-- **Redis** - 缓存和会话存储
 - **JWT** - 用户认证和授权
 - **SQLAlchemy** - ORM数据库操作
 
@@ -33,7 +32,6 @@ AI面试助手是一个基于React的智能面试准备工具，提供实时语�
 - Node.js 16+
 - Python 3.9+
 - PostgreSQL 17+ (推荐Docker)
-- Redis 7+ (推荐Docker)
 
 ### 1. 使用Docker启动（推荐）
 
@@ -64,11 +62,6 @@ docker run --name postgres-ai-interview \
   -e POSTGRES_PASSWORD=root \
   -p 5432:5432 \
   -d postgres:17.5
-
-# Redis  
-docker run --name redis-ai-interview \
-  -p 6379:6379 \
-  -d redis:7.4-alpine
 ```
 
 ### 2. 传统方式启动后端（可选）
@@ -160,7 +153,6 @@ ai-interview-helper-react/
 **后端配置** (backend/.env):
 ```env
 DATABASE_URL=postgresql://postgres:root@localhost:5432/ai_interview_helper
-REDIS_URL=redis://localhost:6379
 SECRET_KEY=your-secret-key-change-this-in-production
 ACCESS_TOKEN_EXPIRE_MINUTES=30
 ```

@@ -33,12 +33,11 @@ npm install
 ```
 
 ### 后端设置和启动
-后端使用FastAPI框架，需要PostgreSQL和Redis数据库支持。
+后端使用FastAPI框架，需要PostgreSQL数据库支持。
 
 #### 环境要求
 - Python 3.9+
 - PostgreSQL 17+ (Docker容器)
-- Redis 7+ (Docker容器)
 
 #### 安装和启动步骤
 ```bash
@@ -56,7 +55,6 @@ pip install -r requirements.txt
 
 # 配置环境变量（.env文件已包含默认配置）
 # DATABASE_URL=postgresql://postgres:root@localhost:5432/ai_interview_helper
-# REDIS_URL=redis://localhost:6379
 
 # 初始化数据库
 python test_db.py  # 创建数据库和测试连接
@@ -90,7 +88,6 @@ python run_server.py  # 运行在 http://localhost:9000
 ### 后端技术栈
 - **框架**: FastAPI + Uvicorn
 - **数据库**: PostgreSQL 17 + SQLAlchemy ORM
-- **缓存**: Redis 7
 - **认证**: JWT (JSON Web Tokens)
 - **API文档**: 自动生成Swagger/OpenAPI文档
 - **数据验证**: Pydantic模型
@@ -228,7 +225,7 @@ python run_server.py  # 运行在 http://localhost:9000
 ## v0.3 更新说明
 
 ### 主要新增功能
-- **完整的后端架构**: 基于FastAPI + PostgreSQL + Redis
+- **完整的后端架构**: 基于FastAPI + PostgreSQL
 - **用户认证系统**: JWT认证，支持注册/登录/登出
 - **会话持久化**: 所有面试会话和消息自动保存到数据库
 - **默认测试账户**: test/test1234，便于快速测试
