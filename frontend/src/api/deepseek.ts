@@ -153,13 +153,15 @@ export const streamChatWithDeepSeek = async (
  */
 export const handleQuestionDetected = async () => {
   const store = useInterviewStore.getState()
-  const { upsertAnswer, markMessagesAsAsked, messages } = store
+  const { upsertAnswer, markMessagesAsAsked, messages, interviewConfig } = store
   
   // 动态导入工具函数以避免循环依赖
-  const { prepareMessagesForAI } = await import('../utils/questionDetection')
+  const { prepareMessagesForAI, speakerClassifier } = await import('../utils/questionDetection')
   
-  // 准备消息（KV Cache优化）
-  const { aiMessages, newMessageIds } = prepareMessagesForAI(messages)
+  // 准备消息（KV Cache优化 + 按自动判定的面试官剔除/标记说话人）
+  const { aiMessages, newMessageIds } = prepareMessagesForAI(messages, {
+    role: interviewConfig.role,
+  })
   
   // 如果没有新消息，直接返回
   if (aiMessages.length === 0 || newMessageIds.length === 0) {
@@ -192,6 +194,12 @@ export const handleQuestionDetected = async () => {
     
     // 标记消息为已处理，优化后续KV Cache命中
     markMessagesAsAsked(newMessageIds)
+    
+    // 正反馈闭环：AI 成功响应，证明被送进 AI 的这一方在提问 → 强化分类器对该方的判定
+    const interviewerRole = speakerClassifier.interviewerRole
+    if (interviewerRole) {
+      speakerClassifier.confirm(interviewerRole)
+    }
     
   } catch (err: any) {
     // DeepSeek API错误处理

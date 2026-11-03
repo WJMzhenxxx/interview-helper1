@@ -89,6 +89,12 @@ export interface InterviewConfig {
   lang: string
   customQA: string
   qaLibStatus: string // 问答库状态
+  /**
+   * 使用者身份（决定 AI 扮演的角色）
+   * - 'interviewer'：使用者是面试官，AI 扮演面试者
+   * - 'interviewee'：使用者是面试者/求职者，AI 扮演面试官（提供作答提示）
+   */
+  role: 'interviewer' | 'interviewee'
 }
 
 export interface Answer {
@@ -132,6 +138,7 @@ const defaultInterviewConfig: InterviewConfig = {
   lang: 'Typescript',
   customQA: '否',
   qaLibStatus: '空',
+  role: 'interviewee',  // 默认：使用者是面试者，AI 扮演面试官辅助作答
 }
 
 export const useInterviewStore = create<InterviewState>()(

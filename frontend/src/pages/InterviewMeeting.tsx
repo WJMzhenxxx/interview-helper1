@@ -52,6 +52,11 @@ const InterviewMeeting: React.FC = () => {
   // 开始面试
   const handleStart = async () => {
     setRecording(true)
+    // 重置自动说话人分类器，开始新一轮面试识别
+    ;(async () => {
+      const { speakerClassifier } = await import('@/utils/questionDetection')
+      speakerClassifier.reset()
+    })()
     const recorder = new RecorderManager('/xfyunRtasr')
     recorderRef.current = recorder
     const ws = createRtasrWebSocket({

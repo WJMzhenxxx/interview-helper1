@@ -89,6 +89,29 @@ const InterviewNew: React.FC = () => {
           </Space>
         </div>
         <Divider style={{ margin: '24px 0' }} />
+        {/* 身份设置 */}
+        <div style={{ padding: '0 32px' }}>
+          <Title level={5} style={{ marginBottom: 16 }}>身份设置</Title>
+          <Space size="large" wrap align="start">
+            <Form.Item
+              label="我是（使用者身份）"
+              name="role"
+              style={{ marginBottom: 0 }}
+              tooltip="决定 AI 扮演的角色：使用者是面试官时 AI 扮演面试者；使用者是面试者时 AI 扮演面试官提供作答帮助"
+            >
+              <Select style={{ width: 200 }}>
+                <Select.Option value="interviewer">面试官（AI 扮演面试者）</Select.Option>
+                <Select.Option value="interviewee">面试者（AI 扮演面试官）</Select.Option>
+              </Select>
+            </Form.Item>
+          </Space>
+          <div style={{ marginTop: 12 }}>
+            <Text type="secondary">
+              系统将<Text type="warning" strong>自动识别</Text>出面试官的语音并只将其作为问题送给 AI，自动剔除面试者（自己）的语音，无需手动指定说话人。面试开始后会自动收敛修正。
+            </Text>
+          </div>
+        </div>
+        <Divider style={{ margin: '24px 0' }} />
         {/* 模式选择 */}
         <div style={{ padding: '0 32px' }}>
           <Title level={5} style={{ marginBottom: 16 }}>模式选择</Title>

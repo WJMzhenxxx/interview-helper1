@@ -100,6 +100,20 @@ async function initDebouncer() {
 }
 
 /**
+ * 将一条转写消息喂给自动说话人分类器（动态导入以避免循环依赖）
+ * @param message 转写出的消息（含 role 与 content）
+ */
+async function observeSpeakerMessage(message: Pick<MeetingMessage, 'role' | 'content'>) {
+  if (!message?.content?.trim()) return
+  try {
+    const { speakerClassifier } = await import('@/utils/questionDetection')
+    speakerClassifier.observe(message)
+  } catch (e) {
+    console.error('observeSpeakerMessage error', e)
+  }
+}
+
+/**
  * 设置音频活跃状态并同步到问题检测系统
  * @param audioActive 音频是否活跃
  */
@@ -235,6 +249,9 @@ export function parseRtasrResult(contentData: any, onQuestionDetected?: () => vo
               }
               result.push(message)
               
+              // 喂给自动说话人分类器，学习谁是面试官
+              observeSpeakerMessage(message)
+              
               // 每个消息只检查一次触发条件
               checkAndTriggerQuestionDetection(onQuestionDetected)
             }
@@ -258,6 +275,9 @@ export function parseRtasrResult(contentData: any, onQuestionDetected?: () => vo
         status: 'sent' as const,
       }
       result.push(message)
+      
+      // 喂给自动说话人分类器，学习谁是面试官
+      observeSpeakerMessage(message)
       
       // 对最后一个消息也检查触发条件
       checkAndTriggerQuestionDetection(onQuestionDetected)
