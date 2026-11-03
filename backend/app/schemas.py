@@ -74,3 +74,43 @@ class InterviewSessionList(BaseModel):
     
     class Config:
         from_attributes = True
+
+# 模拟面试 schemas
+class MockSessionCreate(BaseModel):
+    jd: Optional[str] = None
+    resume: Optional[str] = None
+    level: str = "unlimited"
+
+class MockMessageCreate(BaseModel):
+    role: str  # 'interviewer' | 'ai'
+    content: str
+
+class MockMessageOut(BaseModel):
+    id: int
+    role: str
+    content: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class MockSessionOut(BaseModel):
+    id: int
+    session_id: str
+    jd: Optional[str] = None
+    resume: Optional[str] = None
+    level: str
+    created_at: datetime
+    updated_at: datetime
+    messages: List[MockMessageOut] = []
+
+    class Config:
+        from_attributes = True
+
+class MockRespondRequest(BaseModel):
+    """触发 AI 面试者回应的请求体。"""
+    session_id: str
+    # 面试官当前说的话（新问题）
+    interviewer_message: str
+    # 限时（秒），默认 10
+    timeout_seconds: float = 10.0

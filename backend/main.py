@@ -13,7 +13,7 @@ from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 
 from app.database import engine, Base
-from app.routers import auth, sessions, ai
+from app.routers import auth, sessions, ai, mock_interview
 
 load_dotenv(encoding='utf-8')
 
@@ -55,6 +55,7 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/api/auth", tags=["authentication"])
 app.include_router(sessions.router, prefix="/api/sessions", tags=["sessions"])
 app.include_router(ai.router, prefix="/api/ai", tags=["ai"])
+app.include_router(mock_interview.router, prefix="/api/mock-interview", tags=["mock-interview"])
 
 @app.get("/")
 async def root():
