@@ -10,4 +10,13 @@ export default defineConfig({
       '@': resolve(__dirname, 'src'),
     },
   },
+  server: {
+    proxy: {
+      // 开发环境把 /api 代理到后端，流式 SSE 也走此转发
+      '/api': {
+        target: 'http://localhost:9000',
+        changeOrigin: true,
+      },
+    },
+  },
 })

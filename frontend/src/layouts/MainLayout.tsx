@@ -27,6 +27,7 @@ const menuItems = [
     label: '面试管理',
     children: [
       { key: 'interview-new', label: <Link to="/interview/new">新的面试</Link> },
+      { key: 'mock-interview', label: <Link to="/mock-interview">模拟面试</Link> },
       { key: 'interview-record', label: <Link to="/interview/record">面试记录</Link> },
     ],
   },
@@ -58,6 +59,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const path = location.pathname
     if (path === '/') return ['home']
     if (path.startsWith('/interview/new')) return ['interview-new']
+    if (path.startsWith('/mock-interview')) return ['mock-interview']
     if (path.startsWith('/interview/record')) return ['interview-record']
     if (path.startsWith('/help')) return ['help']
     if (path.startsWith('/settings')) return ['settings']
