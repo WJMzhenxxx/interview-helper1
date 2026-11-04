@@ -1,0 +1,4 @@
+chore: 移除误提交的临时文件并提交 package-lock 良性修正
+
+- 删除误提交的 fixmsg.tmp 临时文件
+- package-lock.json 标记 @types/react 为 devDependency（npm install 自动修正）

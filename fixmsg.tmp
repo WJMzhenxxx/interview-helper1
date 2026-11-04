@@ -1,3 +1,0 @@
-fix: MockInterviewSession 使用 type-only 导入 MockSession/MockMessage
-
-interface 类型需用 import type 避免运行时找不到导出
