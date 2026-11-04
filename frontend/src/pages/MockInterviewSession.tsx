@@ -30,6 +30,9 @@ const MockInterviewSession: React.FC = () => {
   const msgBufRef = useRef<MockMessage[]>([])
   const xfyunSessionIdRef = useRef('')    // 讯飞实时转写会话ID（用于结束标识）
   const scrollRef = useRef<HTMLDivElement | null>(null)  // 聊天滚动容器
+  const thinkingRef = useRef(false)       // AI 是否正在输出的镜像（供回调读取）
+  const aiFinishedAtRef = useRef(0)       // AI 最近一次结束输出的时刻（用于冷却窗口）
+  const lastAiContentsRef = useRef<string[]>([])  // 最近几条 AI 回答内容（用于回音去重）
 
   // 加载会话
   useEffect(() => {
@@ -58,7 +61,8 @@ const MockInterviewSession: React.FC = () => {
 
   // 触发 AI 面试者作答
   const triggerAi = useCallback((interviewerText: string) => {
-    if (thinking) return
+    if (thinkingRef.current) return
+    thinkingRef.current = true
     setThinking(true)
     setError('')
     setCurrentAi('')
@@ -70,11 +74,40 @@ const MockInterviewSession: React.FC = () => {
       onDone: () => {
         // 本地追加一条 AI 消息展示
         appendMsg({ id: Date.now(), role: 'ai', content: acc, created_at: new Date().toISOString() })
+        // 记录这条 AI 回答，供后续转写内容做回音去重（只保留最近几条）
+        const normalized = acc.replace(/\s+/g, '').toLowerCase()
+        if (normalized) {
+          lastAiContentsRef.current = [...lastAiContentsRef.current, normalized].slice(-3)
+        }
+        thinkingRef.current = false
+        aiFinishedAtRef.current = Date.now()
         setThinking(false)
         setCurrentAi('')
       },
     }, 10)
-  }, [sessionId, thinking])
+  }, [sessionId])
+
+  // 是否为「朗读 AI 回答」的回音：判断转写内容与最近某条 AI 回答足够相似
+  const isEchoOfAi = useCallback((text: string): boolean => {
+    const t = text.replace(/\s+/g, '').toLowerCase()
+    if (!t) return false
+    for (const ai of lastAiContentsRef.current) {
+      if (!ai) continue
+      if (ai.length === 0) continue
+      // 简单判据：用较短一方的滑动窗口片段在较长一方中出现的情况估算重合度
+      const [small, big] = t.length <= ai.length ? [t, ai] : [ai, t]
+      const win = Math.min(small.length, 30)
+      let hits = 0
+      for (let i = 0; i + win <= small.length; i += win) {
+        const seg = small.slice(i, i + win)
+        if (big.includes(seg)) hits++
+      }
+      const segCount = Math.ceil(small.length / win)
+      const common = segCount ? hits / segCount : 0
+      if (common >= 0.6) return true
+    }
+    return false
+  }, [])
 
   // 面试官（使用者）说完停顿检测触发
   const onSilence = useCallback((text: string) => {
@@ -83,10 +116,21 @@ const MockInterviewSession: React.FC = () => {
     const now = Date.now()
     // 防抖：5 秒内不重复触发
     if (now - lastSilentTriggerRef.current < 5000) return
+
+    // 回音去重：转写内容与最近 AI 回答高度重合（用户在朗读 AI 生成的回答）则丢弃，
+    // 避免把 AI 说出的内容又当成面试官输入，形成循环
+    const echo = isEchoOfAi(t)
+    if (echo) {
+      // 丢弃回音，但仍消耗一次触发名额，避免紧接着又被同段回音触发
+      lastSilentTriggerRef.current = now
+      activeMessageRef.current = ''
+      return
+    }
+
     lastSilentTriggerRef.current = now
     appendMsg({ id: Date.now(), role: 'interviewer', content: t, created_at: new Date().toISOString() })
     triggerAi(t)
-  }, [triggerAi])
+  }, [triggerAi, isEchoOfAi])
 
   // 解析转写结果：累积面试官说话内容，停顿(约2.5s)后触发作答
   const handleRtasrResult = useCallback((data: any) => {
@@ -112,6 +156,15 @@ const MockInterviewSession: React.FC = () => {
     if (!chunks.length) return
 
     const text = chunks.map(c => c.content).join('')
+
+    // AI 正在输出时，麦克风很可能在采集朗读出来的 AI 回答，
+    // 直接丢弃该段转写，避免污染面试官输入
+    if (thinkingRef.current) return
+
+    // AI 刚结束输出后的冷却窗口（约 4 秒）内丢弃转写，
+    // 吸收朗读回答尾音的残留
+    if (Date.now() - aiFinishedAtRef.current < 4000) return
+
     activeMessageRef.current += text
 
     // 每次有新转写都重置"停顿计时"
