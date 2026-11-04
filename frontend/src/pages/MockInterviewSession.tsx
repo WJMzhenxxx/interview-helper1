@@ -45,6 +45,21 @@ const ECHO_BUF_CAP = 120
 // 转写间隔超过该时长视为「新的一段话」，重置回音缓冲（避免吞掉随后的真实问题）
 const ECHO_GAP_RESET_MS = 3500
 
+// 调试日志开关的本地存储键
+const DEBUG_LS_KEY = 'mockInterviewDebug'
+
+interface DebugEntry {
+  ts: number          // 时间戳
+  t: number           // 相对会话开始的毫秒
+  event: string       // 事件：decision（note 为 echo/question/dupSkip）、gapReset、aiDone
+  seg?: string        // 本段转写原文
+  buf?: string        // 参与比对的滚动缓冲
+  score?: number      // 相似度分数
+  threshold?: number  // 本次使用的阈值
+  echoState?: boolean // 判定前的滞回状态
+  note?: string       // 备注：echo/question/dupSkip/gapReset/aiDone
+}
+
 const MockInterviewSession: React.FC = () => {
   const { sessionId = '' } = useParams<{ sessionId: string }>()
   const navigate = useNavigate()
@@ -72,6 +87,50 @@ const MockInterviewSession: React.FC = () => {
   const echoBufRef = useRef('')           // 跨停顿累计的转写缓冲（回音判定用）
   const echoStateRef = useRef(false)      // 是否处于「回音态」（滞回用）
   const lastChunkAtRef = useRef(0)        // 最近一次收到转写的时刻（用于话语段边界重置）
+
+  // ---- 调试日志 ----
+  const [debugOn, setDebugOn] = useState<boolean>(() => {
+    try { return localStorage.getItem(DEBUG_LS_KEY) === '1' } catch { return false }
+  })
+  const [debugCount, setDebugCount] = useState(0)
+  const debugOnRef = useRef(debugOn)
+  const debugLogRef = useRef<DebugEntry[]>([])
+  const debugStartRef = useRef(Date.now())
+  const aiRawRef = useRef<string[]>([])   // 原始 AI 回答（供导出对照标注）
+
+  useEffect(() => {
+    debugOnRef.current = debugOn
+    try { localStorage.setItem(DEBUG_LS_KEY, debugOn ? '1' : '0') } catch { /* ignore */ }
+  }, [debugOn])
+
+  const logDebug = useCallback((e: Omit<DebugEntry, 'ts' | 't'>) => {
+    if (!debugOnRef.current) return
+    const now = Date.now()
+    debugLogRef.current.push({ ...e, ts: now, t: now - debugStartRef.current })
+    // 只保留最近 3000 条，避免内存无限增长
+    if (debugLogRef.current.length > 3000) debugLogRef.current.splice(0, debugLogRef.current.length - 3000)
+    setDebugCount(debugLogRef.current.length)
+  }, [])
+
+  const exportDebug = useCallback(() => {
+    const data = {
+      exportedAt: new Date().toISOString(),
+      sessionId,
+      thresholds: { enter: 0.5, stay: 0.35, bufCap: ECHO_BUF_CAP, gapResetMs: ECHO_GAP_RESET_MS },
+      aiAnswersNormalized: lastAiContentsRef.current,
+      aiAnswersRaw: aiRawRef.current,
+      entries: debugLogRef.current,
+    }
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `mock-interview-debug-${Date.now()}.json`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }, [sessionId])
 
   // 加载会话
   useEffect(() => {
@@ -118,6 +177,7 @@ const MockInterviewSession: React.FC = () => {
         if (normalized) {
           lastAiContentsRef.current = [...lastAiContentsRef.current, normalized].slice(-3)
         }
+        aiRawRef.current = [...aiRawRef.current, acc].slice(-5)
         thinkingRef.current = false
         aiFinishedAtRef.current = Date.now()
         // AI 结束时清空累积缓冲，避免 AI 最后一句的扬声器尾音残留累积后触发假问题。
@@ -125,11 +185,12 @@ const MockInterviewSession: React.FC = () => {
         activeMessageRef.current = ''
         echoBufRef.current = ''
         echoStateRef.current = false
+        logDebug({ event: 'aiDone', note: `回答长度=${acc.length}`, seg: acc.slice(0, 40) })
         setThinking(false)
         setCurrentAi('')
       },
     }, 10)
-  }, [sessionId])
+  }, [sessionId, logDebug])
 
   // 计算「最近转录文本」与「最近 AI 回答」的最大相似度（0~1）。
   // 用 bigram(0.6) + trigram(0.4) 加权：bigram 对 ASR 错字/多字更鲁棒。
@@ -175,10 +236,12 @@ const MockInterviewSession: React.FC = () => {
     echoBufRef.current = (echoBufRef.current + t).slice(-ECHO_BUF_CAP)
     const s = echoScoreOf(echoBufRef.current)
     // 双阈值滞回：一旦进入回音态，用更低阈值维持，避免朗读中零星片段漏出
-    const threshold = echoStateRef.current ? 0.35 : 0.5
+    const wasEcho = echoStateRef.current
+    const threshold = wasEcho ? 0.35 : 0.5
     if (s >= threshold) {
       echoStateRef.current = true
       activeMessageRef.current = ''
+      logDebug({ event: 'decision', seg: t, buf: echoBufRef.current, score: Number(s.toFixed(4)), threshold, echoState: wasEcho, note: 'echo' })
       // 保留较长的尾巴，保证朗读片段的相似度判定能连续命中
       echoBufRef.current = echoBufRef.current.slice(-100)
       return
@@ -187,11 +250,15 @@ const MockInterviewSession: React.FC = () => {
     // 2) 真实问题：防抖只用于避免同一句话被重复触发，不再吞掉真实提问
     echoStateRef.current = false
     echoBufRef.current = ''
-    if (now - lastSilentTriggerRef.current < 1500) return
+    if (now - lastSilentTriggerRef.current < 1500) {
+      logDebug({ event: 'decision', seg: t, score: Number(s.toFixed(4)), threshold, echoState: wasEcho, note: 'dupSkip' })
+      return
+    }
+    logDebug({ event: 'decision', seg: t, score: Number(s.toFixed(4)), threshold, echoState: wasEcho, note: 'question' })
     lastSilentTriggerRef.current = now
     appendMsg({ id: Date.now(), role: 'interviewer', content: t, created_at: new Date().toISOString() })
     triggerAi(t)
-  }, [triggerAi, echoScoreOf])
+  }, [triggerAi, echoScoreOf, logDebug])
 
   // 解析转写结果：累积面试官说话内容，停顿(约2.5s)后触发作答
   const handleRtasrResult = useCallback((data: any) => {
@@ -231,6 +298,8 @@ const MockInterviewSession: React.FC = () => {
     // 重置回音累计缓冲，避免上一段朗读的残留把随后真实问题一起吞掉。
     const nowMs = Date.now()
     if (nowMs - lastChunkAtRef.current > ECHO_GAP_RESET_MS) {
+      // 记录上一段缓冲，便于事后分析是否误吞了真实问题
+      if (echoBufRef.current) logDebug({ event: 'gapReset', buf: echoBufRef.current, note: `间隔=${nowMs - lastChunkAtRef.current}ms` })
       echoBufRef.current = ''
       echoStateRef.current = false
     }
@@ -250,7 +319,7 @@ const MockInterviewSession: React.FC = () => {
       if (msg.trim()) onSilence(msg)
       silenceTimerRef.current = null
     }, 2500)
-  }, [onSilence])
+  }, [onSilence, logDebug])
 
   const handleStart = async () => {
     setRecording(true)
@@ -354,6 +423,34 @@ const MockInterviewSession: React.FC = () => {
         <Text type="secondary">{recording ? (audioActive ? '收音中' : '静音中') : '未录音'}</Text>
         {thinking && <Spin size="small" />}
         <Text type="secondary">水平：{session?.level || '-'}</Text>
+
+        {/* 调试日志开关与导出 */}
+        <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+          <button
+            onClick={() => setDebugOn(v => !v)}
+            style={{
+              fontSize: 12, padding: '4px 10px', borderRadius: 6, cursor: 'pointer',
+              border: '1px solid ' + (debugOn ? '#1677ff' : '#d9d9d9'),
+              background: debugOn ? '#e6f4ff' : '#fff',
+              color: debugOn ? '#1677ff' : '#666',
+            }}
+          >
+            调试日志：{debugOn ? '开' : '关'}{debugOn ? `（${debugCount}）` : ''}
+          </button>
+          {debugOn && (
+            <>
+              <button onClick={exportDebug} style={{ fontSize: 12, padding: '4px 10px', borderRadius: 6, cursor: 'pointer', border: '1px solid #1677ff', background: '#1677ff', color: '#fff' }}>
+                导出 JSON
+              </button>
+              <button
+                onClick={() => { debugLogRef.current = []; setDebugCount(0) }}
+                style={{ fontSize: 12, padding: '4px 10px', borderRadius: 6, cursor: 'pointer', border: '1px solid #d9d9d9', background: '#fff', color: '#666' }}
+              >
+                清空
+              </button>
+            </>
+          )}
+        </span>
       </div>
     </div>
   )
