@@ -1,37 +1,82 @@
-// 科大讯飞实时语音转写API工具
-// 文档参考：https://www.xfyun.cn/doc/asr/rtasr/API.html
+// 科大讯飞实时语音转写大模型（新版）API工具
+// 文档参考：实时语音转写大模型（office-api-ast-dx.iflyaisol.com，HTTP 签名鉴权）
 
 import CryptoJS from 'crypto-js';
 import type { MeetingMessage } from '@/store/interviewStore'
 import { useInterviewStore } from '@/store/interviewStore'
 import { useXfyunConfigStore } from '@/store/xfyunConfigStore'
 
-// 获取当前时间戳（秒）
-function getTimestamp() {
-  return Math.floor(Date.now() / 1000);
+// 实时语音转写大模型接口地址
+const RTASR_WS_URL = 'wss://office-api-ast-dx.iflyaisol.com/ast/communicate/v1';
+
+// URL 编码
+function urlEncode(str: string): string {
+  return encodeURIComponent(str);
 }
 
-// 生成 signa（HMACSHA1 + base64 + urlencode）
-function getSigna(appid: string, apiKey: string, ts: number) {
-  const signa = CryptoJS.MD5(appid + ts).toString();
-  const signatureSha = CryptoJS.HmacSHA1(signa, apiKey);
-  const signature = CryptoJS.enc.Base64.stringify(signatureSha);
-  return encodeURIComponent(signature);
+// 生成当前时间 utc（格式：2025-09-04T15:38:07+0800）
+function getUtc(): string {
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const offsetMin = -now.getTimezoneOffset(); // 东八区为 480
+  const sign = offsetMin >= 0 ? '+' : '-';
+  const abs = Math.abs(offsetMin);
+  const hh = pad(Math.floor(abs / 60));
+  const mm = pad(abs % 60);
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}${sign}${hh}${mm}`;
 }
 
-// 生成WebSocket URL
+// 生成 uuid
+function getUuid(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
+/**
+ * 生成新版接口签名
+ * 规则：将请求参数（不含 signature）按参数名升序排序，键值分别 urlencode，
+ * 拼接为 baseString，用 accessKeySecret 做 HmacSHA1，结果 Base64 编码。
+ */
+function getSignature(params: Record<string, string>, accessKeySecret: string): string {
+  const sortedKeys = Object.keys(params).sort();
+  const baseString = sortedKeys
+    .map((k) => `${urlEncode(k)}=${urlEncode(params[k])}`)
+    .join('&');
+  const signature = CryptoJS.HmacSHA1(baseString, accessKeySecret);
+  return CryptoJS.enc.Base64.stringify(signature);
+}
+
+// 生成WebSocket URL（新版实时语音转写大模型）
 export function getRtasrWebSocketUrl() {
-  const { getAppId, getApiKey } = useXfyunConfigStore.getState();
+  const { getAppId, getApiKey, getApiSecret } = useXfyunConfigStore.getState();
   const appId = getAppId();
-  const apiKey = getApiKey();
+  const accessKeyId = getApiKey();
+  const accessKeySecret = getApiSecret();
   
-  if (!appId || !apiKey) {
-    throw new Error('科大讯飞API配置未完成，请在设置中配置APPID和API_KEY');
+  if (!appId || !accessKeyId || !accessKeySecret) {
+    throw new Error('科大讯飞API配置未完成，请在设置中配置APPID、API_KEY和API_SECRET');
   }
   
-  const ts = getTimestamp();
-  const signa = getSigna(appId, apiKey, ts);
-  return `wss://rtasr.xfyun.cn/v1/ws?appid=${appId}&ts=${ts}&signa=${signa}&roleType=2`;
+  const params: Record<string, string> = {
+    appId,
+    accessKeyId,
+    uuid: getUuid(),
+    utc: getUtc(),
+    'audio_encode': 'pcm_s16le',
+    lang: 'autodialect',
+    samplerate: '16000',
+  };
+  
+  const signature = getSignature(params, accessKeySecret);
+  
+  const query = Object.entries({ ...params, signature })
+    .map(([k, v]) => `${k}=${urlEncode(v)}`)
+    .join('&');
+  
+  return `${RTASR_WS_URL}?${query}`;
 }
 
 // 创建WebSocket并处理转写

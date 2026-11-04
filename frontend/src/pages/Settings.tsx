@@ -17,7 +17,7 @@ export default function Settings() {
   const deepseekConfig = apiConfigs.find(config => config.apiProvider === 'deepseek') || apiConfigs[0]
 
   const handleXfyunSave = (values: any) => {
-    updateXfyunConfig(values.appId, values.apiKey)
+    updateXfyunConfig(values.appId, values.apiKey, values.apiSecret)
     message.success('科大讯飞配置已保存')
   }
 
@@ -49,7 +49,7 @@ export default function Settings() {
       
       <Tabs defaultActiveKey="xfyun" type="card">
         <TabPane tab="科大讯飞语音" key="xfyun">
-          <Card title="科大讯飞RTasr API配置">
+          <Card title="科大讯飞语音转写 API配置">
             <Form
               form={xfyunForm}
               layout="vertical"
@@ -57,6 +57,7 @@ export default function Settings() {
               initialValues={{
                 appId: xfyunConfig.appId,
                 apiKey: xfyunConfig.apiKey,
+                apiSecret: xfyunConfig.apiSecret,
               }}
             >
               <Form.Item
@@ -77,6 +78,17 @@ export default function Settings() {
               >
                 <Input.Password 
                   placeholder="请输入科大讯飞API Key"
+                  size="large"
+                />
+              </Form.Item>
+
+              <Form.Item
+                label="API Secret"
+                name="apiSecret"
+                rules={[{ required: true, message: '请输入科大讯飞API Secret' }]}
+              >
+                <Input.Password 
+                  placeholder="请输入科大讯飞API Secret"
                   size="large"
                 />
               </Form.Item>

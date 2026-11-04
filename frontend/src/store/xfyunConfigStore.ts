@@ -8,6 +8,7 @@ import { immer } from 'zustand/middleware/immer'
 export interface XfyunConfig {
   appId: string
   apiKey: string
+  apiSecret: string
   isConfigured: boolean
   description?: string
   createdAt: string
@@ -16,15 +17,17 @@ export interface XfyunConfig {
 
 interface XfyunConfigState {
   config: XfyunConfig
-  updateConfig: (appId: string, apiKey: string) => void
+  updateConfig: (appId: string, apiKey: string, apiSecret: string) => void
   clearConfig: () => void
   getAppId: () => string
   getApiKey: () => string
+  getApiSecret: () => string
 }
 
 const defaultConfig: XfyunConfig = {
   appId: '',
   apiKey: '',
+  apiSecret: '',
   isConfigured: false,
   description: '科大讯飞语音转写API配置',
   createdAt: new Date().toISOString(),
@@ -37,11 +40,12 @@ export const useXfyunConfigStore = create<XfyunConfigState>()(
       immer((set, get) => ({
         config: defaultConfig,
         
-        updateConfig: (appId: string, apiKey: string) => {
+        updateConfig: (appId: string, apiKey: string, apiSecret: string) => {
           set((state) => {
             state.config.appId = appId
             state.config.apiKey = apiKey
-            state.config.isConfigured = !!(appId && apiKey)
+            state.config.apiSecret = apiSecret
+            state.config.isConfigured = !!(appId && apiKey && apiSecret)
             state.config.updatedAt = new Date().toISOString()
           })
         },
@@ -64,6 +68,11 @@ export const useXfyunConfigStore = create<XfyunConfigState>()(
         getApiKey: () => {
           const { config } = get()
           return config.apiKey || import.meta.env.VITE_XFYUN_API_KEY || ''
+        },
+
+        getApiSecret: () => {
+          const { config } = get()
+          return config.apiSecret || import.meta.env.VITE_XFYUN_API_SECRET || ''
         }
       })),
       {

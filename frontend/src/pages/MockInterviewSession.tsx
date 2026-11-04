@@ -28,6 +28,7 @@ const MockInterviewSession: React.FC = () => {
   const activeMessageRef = useRef('')     // 当前累积的面试官语句
   const abortRef = useRef<{ abort: () => void } | null>(null)
   const msgBufRef = useRef<MockMessage[]>([])
+  const xfyunSessionIdRef = useRef('')    // 讯飞实时转写会话ID（用于结束标识）
 
   // 加载会话
   useEffect(() => {
@@ -83,8 +84,24 @@ const MockInterviewSession: React.FC = () => {
 
   // 解析转写结果：累积面试官说话内容，停顿(约2.5s)后触发作答
   const handleRtasrResult = useCallback((data: any) => {
-    if (data?.action !== 'result' || data?.code !== '0') return
-    const parsed = typeof data.data === 'string' ? JSON.parse(data.data) : data.data
+    // 错误或非结果消息直接忽略
+    if (data?.action === 'error') {
+      console.error('讯飞转写错误:', data?.code, data?.desc)
+      return
+    }
+    // 兼容新版接口：action 为 result（或缺失）且 code 为 0 / '0'/ 正常帧时处理
+    if (data?.action && data.action !== 'result') return
+    if (data?.code && String(data.code) !== '0') return
+
+    let parsed: any = data?.data
+    if (typeof parsed === 'string') {
+      try {
+        parsed = parsed ? JSON.parse(parsed) : null
+      } catch {
+        return
+      }
+    }
+    if (!parsed) return
     const chunks = parseRtasrResult(parsed)
     if (!chunks.length) return
 
@@ -107,6 +124,10 @@ const MockInterviewSession: React.FC = () => {
 
   const handleStart = async () => {
     setRecording(true)
+    // 为本次实时转写会话生成唯一ID，用于结束标识
+    if (!xfyunSessionIdRef.current) {
+      xfyunSessionIdRef.current = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+    }
     const recorder = new RecorderManager('/xfyunRtasr')
     recorderRef.current = recorder
     const ws = createRtasrWebSocket({
@@ -130,7 +151,15 @@ const MockInterviewSession: React.FC = () => {
   const handleStop = () => {
     setRecording(false)
     recorderRef.current?.stop()
-    wsRef.current?.close()
+    // 新版接口：先发送结束标识，让服务端返回最终结果
+    const ws = wsRef.current
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ end: true, sessionId: xfyunSessionIdRef.current }))
+    }
+    // 短暂等待最终结果后关闭连接
+    setTimeout(() => {
+      wsRef.current?.close()
+    }, 2000)
     abortRef.current?.abort?.()
     if (silenceTimerRef.current) { window.clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null }
   }
