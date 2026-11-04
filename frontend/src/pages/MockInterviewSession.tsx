@@ -112,6 +112,9 @@ const MockInterviewSession: React.FC = () => {
         }
         thinkingRef.current = false
         aiFinishedAtRef.current = Date.now()
+        // AI 结束时清空累积缓冲，避免 AI 最后一句的扬声器尾音残留累积后触发假问题。
+        // 面试官之后重新开口的问题会重新累积，不受影响。
+        activeMessageRef.current = ''
         setThinking(false)
         setCurrentAi('')
       },
@@ -198,9 +201,10 @@ const MockInterviewSession: React.FC = () => {
     // 直接丢弃该段转写，避免污染面试官输入
     if (thinkingRef.current) return
 
-    // AI 刚结束输出后的冷却窗口（约 4 秒）内丢弃转写，
-    // 吸收朗读回答尾音的残留
-    if (Date.now() - aiFinishedAtRef.current < 4000) return
+    // AI 刚结束输出后的短冷却窗（约 1 秒），仅吸收 AI 最后一句在扬声器播放的尾音延迟。
+    // 长段的朗读回音不靠时间窗处理（会误杀面试官紧接着问的真实问题），
+    // 交给 onSilence 里的内容相似度过滤（isEchoOfAi）去识别。
+    if (Date.now() - aiFinishedAtRef.current < 1000) return
 
     activeMessageRef.current += text
 
