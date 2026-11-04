@@ -92,7 +92,12 @@ print('表结构已就绪')
 # 后台启动后端
 log "后台启动后端（uvicorn :9000）..."
 mkdir -p "$PID_DIR"
-( cd "$BACKEND_DIR" && uv run -q python run_server.py >"$PID_DIR/backend.log" 2>&1 & echo $! > "$PID_DIR/backend.pid" )
+# 后端也用 setsid 开启独立进程组，stop-all 时可连 uv 派生的 python 子进程一并结束
+if command -v setsid &>/dev/null; then
+  ( cd "$BACKEND_DIR" && setsid uv run -q python run_server.py >"$PID_DIR/backend.log" 2>&1 & echo $! > "$PID_DIR/backend.pid" )
+else
+  ( cd "$BACKEND_DIR" && uv run -q python run_server.py >"$PID_DIR/backend.log" 2>&1 & echo $! > "$PID_DIR/backend.pid" )
+fi
 sleep 2
 BACKEND_PID="$(cat "$PID_DIR/backend.pid" 2>/dev/null || true)"
 
@@ -120,10 +125,17 @@ else
 fi
 
 log "后台启动前端（vite dev :5173）..."
-( cd "$FRONTEND_DIR" && npm run dev >"$PID_DIR/frontend.log" 2>&1 & echo $! > "$PID_DIR/frontend.pid" )
+# 用 setsid 让前端进入独立进程组，stop-all 时通过杀进程组把 npm 的
+# vite 子进程一并终止，避免残留 vite 占住端口导致端口越滚越多。
+if command -v setsid &>/dev/null; then
+  ( cd "$FRONTEND_DIR" && setsid npm run dev -- --strictPort >"$PID_DIR/frontend.log" 2>&1 & echo $! > "$PID_DIR/frontend.pid" )
+else
+  ( cd "$FRONTEND_DIR" && npm run dev -- --strictPort >"$PID_DIR/frontend.log" 2>&1 & echo $! > "$PID_DIR/frontend.pid" )
+fi
 sleep 4
 FRONTEND_PID="$(cat "$PID_DIR/frontend.pid" 2>/dev/null || true)"
 
+# --strictPort 时若 5173 被残留进程占用，vite 会直接报错退出而非无限换端口
 if [[ -n "$FRONTEND_PID" ]] && kill -0 "$FRONTEND_PID" 2>/dev/null; then
   ok "前端已启动 (PID $FRONTEND_PID)，日志: $PID_DIR/frontend.log"
 else
