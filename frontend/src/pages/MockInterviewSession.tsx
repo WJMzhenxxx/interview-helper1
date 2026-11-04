@@ -88,23 +88,32 @@ const MockInterviewSession: React.FC = () => {
   }, [sessionId])
 
   // 是否为「朗读 AI 回答」的回音：判断转写内容与最近某条 AI 回答足够相似
+  // 使用 n-gram（3字窗口）集合相似度，对 ASR 错字/多字/少字更鲁棒
   const isEchoOfAi = useCallback((text: string): boolean => {
     const t = text.replace(/\s+/g, '').toLowerCase()
-    if (!t) return false
+    if (t.length < 8) return false  // 太短不足以可靠判断
     for (const ai of lastAiContentsRef.current) {
-      if (!ai) continue
-      if (ai.length === 0) continue
-      // 简单判据：用较短一方的滑动窗口片段在较长一方中出现的情况估算重合度
+      if (!ai || ai.length < 8) continue
       const [small, big] = t.length <= ai.length ? [t, ai] : [ai, t]
-      const win = Math.min(small.length, 30)
+
+      // 构造 big 的 3-gram 集合（用于 O(1) 查重）
+      // 注意：长文本 3-gram 会很多，只留唯一值以压缩
+      const bigSet = new Set<string>()
+      for (let i = 0; i + 3 <= big.length; i++) bigSet.add(big.slice(i, i + 3))
+
+      // 统计 small 的 3-gram 有多少落在 big 里
       let hits = 0
-      for (let i = 0; i + win <= small.length; i += win) {
-        const seg = small.slice(i, i + win)
-        if (big.includes(seg)) hits++
+      let total = 0
+      for (let i = 0; i + 3 <= small.length; i++) {
+        total++
+        if (bigSet.has(small.slice(i, i + 3))) hits++
       }
-      const segCount = Math.ceil(small.length / win)
-      const common = segCount ? hits / segCount : 0
-      if (common >= 0.6) return true
+      if (total === 0) continue
+
+      const ratio = hits / total
+      // 转写是 AI 回答的朗读时，绝大多数 3-gram 都能命中。
+      // 若 small 是转写内容且比例较高（说明它基本是 AI 回答的一段），判定为回音。
+      if (ratio >= 0.5) return true
     }
     return false
   }, [])
