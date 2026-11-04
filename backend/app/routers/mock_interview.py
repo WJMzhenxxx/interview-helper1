@@ -15,28 +15,29 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..models import User as UserModel, MockSession, MockMessage
+from ..models import MockSession, MockMessage
 from ..schemas import (
     MockSessionCreate,
     MockSessionOut,
     MockRespondRequest,
 )
-from ..auth import get_current_active_user
 from ..services import mock_interview
 
 router = APIRouter()
+
+# 已移除接口鉴权，统一使用默认用户
+DEFAULT_USER_ID = 1
 
 
 @router.post("/sessions", response_model=MockSessionOut)
 async def create_mock_session(
     payload: MockSessionCreate,
-    current_user: UserModel = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ):
     """创建模拟面试会话，保存 JD / 简历 / 水平等级。"""
     record = MockSession(
         session_id=str(uuid.uuid4()),
-        user_id=current_user.id,
+        user_id=DEFAULT_USER_ID,
         jd=payload.jd,
         resume=payload.resume,
         level=payload.level or "unlimited",
@@ -50,12 +51,11 @@ async def create_mock_session(
 @router.get("/sessions/{session_id}", response_model=MockSessionOut)
 async def get_mock_session(
     session_id: str,
-    current_user: UserModel = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ):
     """读取模拟面试会话及其全部消息。"""
     try:
-        record = mock_interview.get_or_404(db, session_id, current_user.id)
+        record = mock_interview.get_or_404(db, session_id, DEFAULT_USER_ID)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     return record
@@ -63,13 +63,12 @@ async def get_mock_session(
 
 @router.get("/sessions/", response_model=List[MockSessionOut])
 async def list_mock_sessions(
-    current_user: UserModel = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ):
     """列出当前用户的全部模拟面试会话。"""
     records = (
         db.query(MockSession)
-        .filter(MockSession.user_id == current_user.id)
+        .filter(MockSession.user_id == DEFAULT_USER_ID)
         .order_by(MockSession.updated_at.desc())
         .all()
     )
@@ -80,13 +79,12 @@ async def list_mock_sessions(
 async def respond_mock(
     session_id: str,
     payload: MockRespondRequest,
-    current_user: UserModel = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ):
     """核心：AI 面试者针对面试官当前提问（含追问）流式作答。"""
     # 校验会话归属
     try:
-        record = mock_interview.get_or_404(db, session_id, current_user.id)
+        record = mock_interview.get_or_404(db, session_id, DEFAULT_USER_ID)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 

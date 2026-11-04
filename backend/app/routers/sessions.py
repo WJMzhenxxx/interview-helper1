@@ -13,14 +13,14 @@ from ..schemas import (
     SessionMessageCreate,
     SessionMessage as SessionMessageSchema
 )
-from ..auth import get_current_active_user
-
 router = APIRouter()
+
+# 已移除接口鉴权，统一使用默认用户
+DEFAULT_USER_ID = 1
 
 @router.post("/", response_model=InterviewSessionSchema)
 async def create_session(
     session: InterviewSessionCreate,
-    current_user: UserModel = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     # Generate unique session ID
@@ -28,7 +28,7 @@ async def create_session(
     
     # Create new session
     db_session = InterviewSession(
-        user_id=current_user.id,
+        user_id=DEFAULT_USER_ID,
         session_id=session_id,
         title=session.title or f"Interview Session - {session_id[:8]}"
     )
@@ -40,7 +40,6 @@ async def create_session(
 
 @router.get("/", response_model=List[InterviewSessionList])
 async def get_user_sessions(
-    current_user: UserModel = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     # Get sessions with message count
@@ -48,7 +47,7 @@ async def get_user_sessions(
         InterviewSession,
         func.count(SessionMessage.id).label('message_count')
     ).outerjoin(SessionMessage).filter(
-        InterviewSession.user_id == current_user.id
+        InterviewSession.user_id == DEFAULT_USER_ID
     ).group_by(InterviewSession.id).order_by(
         InterviewSession.updated_at.desc()
     ).all()
@@ -69,12 +68,11 @@ async def get_user_sessions(
 @router.get("/{session_id}", response_model=InterviewSessionSchema)
 async def get_session(
     session_id: str,
-    current_user: UserModel = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     session = db.query(InterviewSession).filter(
         InterviewSession.session_id == session_id,
-        InterviewSession.user_id == current_user.id
+        InterviewSession.user_id == DEFAULT_USER_ID
     ).first()
     
     if not session:
@@ -89,13 +87,12 @@ async def get_session(
 async def add_message_to_session(
     session_id: str,
     message: SessionMessageCreate,
-    current_user: UserModel = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     # Get session
     session = db.query(InterviewSession).filter(
         InterviewSession.session_id == session_id,
-        InterviewSession.user_id == current_user.id
+        InterviewSession.user_id == DEFAULT_USER_ID
     ).first()
     
     if not session:
@@ -125,13 +122,12 @@ async def add_message_to_session(
 @router.get("/{session_id}/messages", response_model=List[SessionMessageSchema])
 async def get_session_messages(
     session_id: str,
-    current_user: UserModel = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     # Get session
     session = db.query(InterviewSession).filter(
         InterviewSession.session_id == session_id,
-        InterviewSession.user_id == current_user.id
+        InterviewSession.user_id == DEFAULT_USER_ID
     ).first()
     
     if not session:
@@ -149,12 +145,11 @@ async def get_session_messages(
 @router.delete("/{session_id}")
 async def delete_session(
     session_id: str,
-    current_user: UserModel = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     session = db.query(InterviewSession).filter(
         InterviewSession.session_id == session_id,
-        InterviewSession.user_id == current_user.id
+        InterviewSession.user_id == DEFAULT_USER_ID
     ).first()
     
     if not session:

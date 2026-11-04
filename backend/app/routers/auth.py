@@ -1,6 +1,5 @@
 from datetime import timedelta
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import HTTPBearer
 from sqlalchemy.orm import Session
 
 from ..database import get_db
@@ -10,12 +9,13 @@ from ..auth import (
     authenticate_user, 
     create_access_token, 
     get_password_hash, 
-    get_current_active_user,
     ACCESS_TOKEN_EXPIRE_MINUTES
 )
 
 router = APIRouter()
-security = HTTPBearer()
+
+# 已移除接口鉴权，统一使用默认用户
+DEFAULT_USER_ID = 1
 
 @router.post("/register", response_model=User)
 async def register_user(user: UserCreate, db: Session = Depends(get_db)):
@@ -67,11 +67,11 @@ async def login_user(user_credentials: UserLogin, db: Session = Depends(get_db))
     return {"access_token": access_token, "token_type": "bearer"}
 
 @router.get("/me", response_model=User)
-async def read_users_me(current_user: UserModel = Depends(get_current_active_user)):
-    return current_user
+async def read_users_me(db: Session = Depends(get_db)):
+    return db.query(UserModel).filter(UserModel.id == DEFAULT_USER_ID).first()
 
 @router.post("/logout")
-async def logout_user(current_user: UserModel = Depends(get_current_active_user)):
+async def logout_user():
     # In a real application, you might want to blacklist the token
     # For now, we'll just return a success message
     return {"detail": "Successfully logged out"}
