@@ -1,9 +1,7 @@
 from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey, Boolean
-from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from datetime import datetime
-
-Base = declarative_base()
+from .database import Base  # 与 database.py 共享同一个 Base，确保 create_all 能建表
 
 class User(Base):
     __tablename__ = "users"

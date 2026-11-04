@@ -50,9 +50,9 @@ echo "🔍 检查后端API连接..."
 if curl -s -f http://localhost:9000/health > /dev/null 2>&1; then
     echo "✅ 后端API服务正常运行"
 else
-    echo "⚠️  后端API不可访问，请确保Docker容器正在运行"
+    echo "⚠️  后端API不可访问，请先启动后端"
     echo "💡 可以运行以下命令启动后端："
-    echo "   docker-compose -f docker-compose.dev.yml up -d"
+    echo "   bash scripts/start-all.sh   # 一键启动前后端"
     echo ""
     echo "🔄 继续启动前端服务器..."
 fi

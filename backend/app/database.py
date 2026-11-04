@@ -6,9 +6,14 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:yourpassword@localhost:5432/ai_interview_helper")
+# 默认使用 SQLite（零外部依赖，无需安装数据库，文件位于 backend/ 下）
+DEFAULT_SQLITE_URL = "sqlite:///./ai_interview_helper.db"
+DATABASE_URL = os.getenv("DATABASE_URL", DEFAULT_SQLITE_URL) or DEFAULT_SQLITE_URL
 
-engine = create_engine(DATABASE_URL)
+# 仅 SQLite 需要关闭跨线程检查（FastAPI 多线程访问）
+connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
+engine = create_engine(DATABASE_URL, connect_args=connect_args)
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()

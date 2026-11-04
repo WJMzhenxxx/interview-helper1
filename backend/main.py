@@ -27,9 +27,8 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"❌ 数据库初始化失败: {e}")
         print("请检查:")
-        print("1. PostgreSQL服务是否正在运行")
-        print("2. 数据库连接信息是否正确")
-        print("3. 数据库密码是否为'root'")
+        print("1. 数据库连接信息是否正确")
+        print("2. 若使用 SQLite，backend/ 目录是否可写")
         raise e
     
     yield

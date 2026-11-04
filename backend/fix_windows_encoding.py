@@ -42,9 +42,10 @@ def fix_windows_encoding():
 def test_database_connection():
     """测试数据库连接"""
     try:
+        from sqlalchemy import text
         from app.database import engine
         with engine.connect() as conn:
-            result = conn.execute("SELECT 1")
+            result = conn.execute(text("SELECT 1"))
             print("✅ 数据库连接成功")
             return True
     except Exception as e:
@@ -61,12 +62,11 @@ if __name__ == "__main__":
             print("✅ 数据库连接测试成功")
         else:
             print("❌ 数据库连接测试失败")
-            print("请检查PostgreSQL是否正在运行，密码是否正确")
+            print("请检查 DATABASE_URL 是否正确（默认 SQLite）")
     else:
         print("❌ 编码环境修复失败")
     
     print("\n📝 解决方案建议:")
-    print("1. 确保PostgreSQL服务正在运行")
-    print("2. 检查数据库密码是否为'root'")
-    print("3. 如果问题持续，请尝试修改DATABASE_URL中的密码")
-    print("4. 建议在Windows Terminal或PowerShell中运行，避免使用Git Bash")
+    print("1. 默认使用 SQLite，无需安装数据库")
+    print("2. 若自定义了 DATABASE_URL，请确保指向正确的数据库")
+    print("3. 建议在 Windows Terminal 或 PowerShell 中运行，避免使用 Git Bash")

@@ -1,16 +1,14 @@
 #!/usr/bin/env bash
 #
-# AI Interview Helper — 本地一键启动脚本（原生栈，非 Docker）
+# AI Interview Helper — 本地一键启动脚本（原生栈 + SQLite，零外部依赖）
 #
 # 前提：
-#   - 已在本机安装并运行 PostgreSQL（默认 localhost:5432），并已创建
-#     ai_interview_helper 数据库；密码默认 root（可用 .env 覆盖）
-#   - 已安装：bash、uv、node、npm
+#   - 已安装：bash、uv、node、npm（无需数据库，后端默认使用 SQLite）
 #
 # 行为：
 #   - 缺失时才安装依赖（后端 .venv 不存在则 uv sync，前端 node_modules
 #     不存在则 npm install），已存在直接启动
-#   - 后端以后台方式启动（uvicorn，端口 9000，URL 见 backend/.env）
+#   - 后端以后台方式启动（uvicorn，端口 9000）
 #   - 前端以后台方式启动（vite dev，端口 5173）
 #   - 自动为后端/前端创建 .env（若缺则从 .env.example 复制）
 #   - 每次启动后端前幂等执行建表 + 默认用户
@@ -50,7 +48,6 @@ need_cmd() {
     case "$1" in
       uv)    echo "  请安装 uv：https://docs.astral.sh/uv/ ；或 pip install uv" ;;
       node|npm) echo "  请安装 Node.js 16+：https://nodejs.org/" ;;
-      psql)  echo "  请安装 PostgreSQL 客户端" ;;
     esac
     return 1
   fi
@@ -90,7 +87,7 @@ from app.database import engine
 from app.models import Base
 Base.metadata.create_all(bind=engine)
 print('表结构已就绪')
-" && uv run -q python -X utf8 init_default_user.py ) || warn "初始化数据库失败，请检查 PostgreSQL 是否已启动、.env 中 DATABASE_URL 是否正确"
+" && uv run -q python -X utf8 init_default_user.py ) || warn "初始化数据库失败，请检查 backend/.env 与文件写入权限"
 
 # 后台启动后端
 log "后台启动后端（uvicorn :9000）..."

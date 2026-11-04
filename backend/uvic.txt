@@ -1,0 +1,8 @@
+🗄️ 正在创建数据库表...
+✅ 数据库表创建成功
+INFO:     127.0.0.1:51709 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51709 - "POST /api/auth/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64345 - "POST /api/auth/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64345 - "POST /api/mock-interview/sessions HTTP/1.1" 200 OK
+🗄️ 正在创建数据库表...
+✅ 数据库表创建成功

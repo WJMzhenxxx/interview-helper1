@@ -54,10 +54,8 @@ def test_database_connection():
     except Exception as e:
         print(f"❌ 数据库连接失败: {e}")
         print("\n💡 解决建议:")
-        print("1. 确保PostgreSQL服务正在运行")
-        print("2. 检查端口5432是否被占用")
-        print("3. 验证数据库密码是否为'root'")
-        print("4. 尝试手动创建数据库: CREATE DATABASE ai_interview_helper;")
+        print("1. 默认使用 SQLite，无需安装数据库")
+        print("2. 若自定义了 DATABASE_URL，请确保其正确")
         return False
 
 def start_server():
