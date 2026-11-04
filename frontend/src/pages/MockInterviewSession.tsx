@@ -172,7 +172,7 @@ const MockInterviewSession: React.FC = () => {
   }, [])
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#fff' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#fff', color: '#1f1f1f' }}>
       {/* 顶部栏 */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 24px', borderBottom: '1px solid #eee' }}>
         <Title level={4} style={{ margin: 0 }}>模拟面试（AI 面试者）</Title>
@@ -194,6 +194,7 @@ const MockInterviewSession: React.FC = () => {
             <div style={{
               maxWidth: '70%', padding: '10px 14px', borderRadius: 8,
               background: m.role === 'interviewer' ? '#f5f5f5' : '#e6f7ff',
+              color: '#1f1f1f',
             }}>
               {m.content}
             </div>
@@ -204,7 +205,7 @@ const MockInterviewSession: React.FC = () => {
         {thinking && (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
             <div style={{ fontSize: 12, color: '#999', marginBottom: 4 }}>AI 面试者（思考中...）</div>
-            <div style={{ maxWidth: '70%', padding: '10px 14px', borderRadius: 8, background: '#e6f7ff' }}>
+            <div style={{ maxWidth: '70%', padding: '10px 14px', borderRadius: 8, background: '#e6f7ff', color: '#1f1f1f' }}>
               {currentAi || <Spin size="small" />}
             </div>
           </div>
