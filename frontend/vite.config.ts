@@ -11,6 +11,8 @@ export default defineConfig({
     },
   },
   server: {
+    // 监听所有网络接口，便于通过 SSH 隧道对外访问
+    host: '0.0.0.0',
     proxy: {
       // 开发环境把 /api 代理到后端，流式 SSE 也走此转发
       '/api': {
