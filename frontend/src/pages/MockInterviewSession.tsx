@@ -9,6 +9,37 @@ import { isAudioActive } from '../utils/voiceIdentifier'
 
 const { Title, Text } = Typography
 
+// 中文数字归一化：把中文字符表示的数字统一转成阿拉伯数字，
+// 使「十一月/11月、五个/5个、三千两百/3200」在回音比对时能对齐
+const _cnDigit: Record<string, number> = { 零: 0, 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 }
+const _cnUnit: Record<string, number> = { 十: 10, 百: 100, 千: 1000, 万: 10000, 亿: 100000000 }
+const _parseCnNumber = (s: string): number => {
+  let total = 0, section = 0, number = 0
+  for (const ch of s) {
+    if (ch === '零') continue
+    else if (_cnDigit[ch] !== undefined) number = _cnDigit[ch]
+    else if (_cnUnit[ch] !== undefined) {
+      const u = _cnUnit[ch]
+      if (u === 10000 || u === 100000000) {
+        section = (section + number) * u
+        total += section
+        section = 0
+        number = 0
+      } else {
+        section += (number || 1) * u
+        number = 0
+      }
+    }
+  }
+  return total + section + number
+}
+const _normalizeNumbers = (text: string): string =>
+  text.replace(/[零一二两三四五六七八九十百千万亿]+/g, (m) => {
+    if (m.length === 1 && _cnDigit[m] !== undefined) return String(_cnDigit[m])
+    const v = _parseCnNumber(m)
+    return Number.isNaN(v) ? m : String(v)
+  })
+
 const MockInterviewSession: React.FC = () => {
   const { sessionId = '' } = useParams<{ sessionId: string }>()
   const navigate = useNavigate()
@@ -88,22 +119,19 @@ const MockInterviewSession: React.FC = () => {
   }, [sessionId])
 
   // 是否为「朗读 AI 回答」的回音：判断转写内容与最近某条 AI 回答足够相似
-  // 使用 n-gram（3字窗口）集合相似度，对 ASR 错字/多字/少字更鲁棒
+  // 使用 n-gram（3字窗口）集合相似度 + 中文数字归一化，对 ASR 错字/多字/数字写法差异更鲁棒
   const isEchoOfAi = useCallback((text: string): boolean => {
-    const t = text.replace(/\s+/g, '').toLowerCase()
+    const t = _normalizeNumbers(text.replace(/\s+/g, '').toLowerCase())
     if (t.length < 8) return false  // 太短不足以可靠判断
-    for (const ai of lastAiContentsRef.current) {
+    for (const rawAi of lastAiContentsRef.current) {
+      const ai = _normalizeNumbers(rawAi.replace(/\s+/g, '').toLowerCase())
       if (!ai || ai.length < 8) continue
       const [small, big] = t.length <= ai.length ? [t, ai] : [ai, t]
 
-      // 构造 big 的 3-gram 集合（用于 O(1) 查重）
-      // 注意：长文本 3-gram 会很多，只留唯一值以压缩
       const bigSet = new Set<string>()
       for (let i = 0; i + 3 <= big.length; i++) bigSet.add(big.slice(i, i + 3))
 
-      // 统计 small 的 3-gram 有多少落在 big 里
-      let hits = 0
-      let total = 0
+      let hits = 0, total = 0
       for (let i = 0; i + 3 <= small.length; i++) {
         total++
         if (bigSet.has(small.slice(i, i + 3))) hits++
@@ -111,8 +139,8 @@ const MockInterviewSession: React.FC = () => {
       if (total === 0) continue
 
       const ratio = hits / total
-      // 转写是 AI 回答的朗读时，绝大多数 3-gram 都能命中。
-      // 若 small 是转写内容且比例较高（说明它基本是 AI 回答的一段），判定为回音。
+      // 转写是 AI 回答的照读时（即使 ASR 有错字、数字写法不同），
+      // 绝大多数 3-gram 仍能命中，比例较高则判定为回音
       if (ratio >= 0.5) return true
     }
     return false
