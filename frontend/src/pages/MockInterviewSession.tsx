@@ -29,6 +29,7 @@ const MockInterviewSession: React.FC = () => {
   const abortRef = useRef<{ abort: () => void } | null>(null)
   const msgBufRef = useRef<MockMessage[]>([])
   const xfyunSessionIdRef = useRef('')    // 讯飞实时转写会话ID（用于结束标识）
+  const scrollRef = useRef<HTMLDivElement | null>(null)  // 聊天滚动容器
 
   // 加载会话
   useEffect(() => {
@@ -44,6 +45,11 @@ const MockInterviewSession: React.FC = () => {
     })
     return () => { mounted = false }
   }, [sessionId, navigate])
+
+  // 消息或流式回答变化时，自动滚动到底部
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
+  }, [messages, currentAi, thinking])
 
   const appendMsg = (m: MockMessage) => {
     msgBufRef.current = [...msgBufRef.current, m]
@@ -185,7 +191,7 @@ const MockInterviewSession: React.FC = () => {
       </div>
 
       {/* 主内容 */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: 24, display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: 24, display: 'flex', flexDirection: 'column', gap: 12 }}>
         {messages.map((m) => (
           <div key={m.id} style={{ display: 'flex', flexDirection: 'column', alignItems: m.role === 'interviewer' ? 'flex-start' : 'flex-end' }}>
             <div style={{ fontSize: 12, color: '#999', marginBottom: 4 }}>
