@@ -44,6 +44,20 @@ const _normalizeNumbers = (text: string): string =>
 const ECHO_BUF_CAP = 120
 // 转写间隔超过该时长视为「新的一段话」，重置回音缓冲（避免吞掉随后的真实问题）
 const ECHO_GAP_RESET_MS = 3500
+// 长度自适应阈值：长片段（>=15字，符合"朗读照读"的特征）用低阈值；
+// 短片段用高阈值，避免把「重叠怎么处理」这类短真实提问误判为回音。
+const ECHO_LONG_LEN = 15
+const ECHO_THR_LONG_ENTER = 0.42
+const ECHO_THR_LONG_STAY = 0.32
+const ECHO_THR_SHORT_ENTER = 0.70
+const ECHO_THR_SHORT_STAY = 0.60
+// 含疑问词的文本更可能是真实提问，提高阈值（回音是陈述片段，通常不含疑问词）
+const ECHO_Q_BONUS = 0.15
+const Q_MARKERS = /[吗呢嘛]|什么|怎么|为什么|如何|多少|哪|是否|能不能|会不会|有没有|可不可以|多久|几个/
+
+// 回音比对用的归一化：去空白/标点/符号，转小写，统一中文数字
+const _normEchoText = (s: string): string =>
+  _normalizeNumbers(s.replace(/[\s\p{P}\p{S}]/gu, '').toLowerCase())
 
 // 调试日志开关的本地存储键
 const DEBUG_LS_KEY = 'mockInterviewDebug'
@@ -116,7 +130,13 @@ const MockInterviewSession: React.FC = () => {
     const data = {
       exportedAt: new Date().toISOString(),
       sessionId,
-      thresholds: { enter: 0.5, stay: 0.35, bufCap: ECHO_BUF_CAP, gapResetMs: ECHO_GAP_RESET_MS },
+      thresholds: {
+        longLen: ECHO_LONG_LEN,
+        longEnter: ECHO_THR_LONG_ENTER, longStay: ECHO_THR_LONG_STAY,
+        shortEnter: ECHO_THR_SHORT_ENTER, shortStay: ECHO_THR_SHORT_STAY,
+        questionBonus: ECHO_Q_BONUS,
+        bufCap: ECHO_BUF_CAP, gapResetMs: ECHO_GAP_RESET_MS,
+      },
       aiAnswersNormalized: lastAiContentsRef.current,
       aiAnswersRaw: aiRawRef.current,
       entries: debugLogRef.current,
@@ -195,11 +215,11 @@ const MockInterviewSession: React.FC = () => {
   // 计算「最近转录文本」与「最近 AI 回答」的最大相似度（0~1）。
   // 用 bigram(0.6) + trigram(0.4) 加权：bigram 对 ASR 错字/多字更鲁棒。
   const echoScoreOf = useCallback((buf: string): number => {
-    const t = _normalizeNumbers(buf.replace(/[\s\p{P}\p{S}]/gu, '').toLowerCase())
+    const t = _normEchoText(buf)
     if (t.length < 3) return 0
     let best = 0
     for (const rawAi of lastAiContentsRef.current) {
-      const ai = _normalizeNumbers(rawAi.replace(/[\s\p{P}\p{S}]/gu, '').toLowerCase())
+      const ai = _normEchoText(rawAi)
       if (!ai || ai.length < 4) continue
       let b2 = 0, t3 = 0
       // bigram
@@ -235,13 +255,22 @@ const MockInterviewSession: React.FC = () => {
     //    注意：回音检测必须先于防抖执行，否则朗读片段会被防抖逻辑悄悄放行。
     echoBufRef.current = (echoBufRef.current + t).slice(-ECHO_BUF_CAP)
     const s = echoScoreOf(echoBufRef.current)
-    // 双阈值滞回：一旦进入回音态，用更低阈值维持，避免朗读中零星片段漏出
     const wasEcho = echoStateRef.current
-    const threshold = wasEcho ? 0.35 : 0.5
+    // 长度自适应阈值：
+    //  - 长片段（>=15字）符合"朗读照读"特征，用低阈值拦截；
+    //  - 短片段用高阈值，避免「重叠怎么处理」这类短真实提问被误判；
+    //  - 含疑问词的文本再抬高阈值（回音是陈述片段，通常不含疑问词）；
+    //  - 滞回：已在回音态时阈值再降 0.1，避免朗读中零星片段漏出。
+    const bufLen = _normEchoText(echoBufRef.current).length
+    const isLong = bufLen >= ECHO_LONG_LEN
+    const baseThr = isLong
+      ? (wasEcho ? ECHO_THR_LONG_STAY : ECHO_THR_LONG_ENTER)
+      : (wasEcho ? ECHO_THR_SHORT_STAY : ECHO_THR_SHORT_ENTER)
+    const threshold = baseThr + (Q_MARKERS.test(t) ? ECHO_Q_BONUS : 0)
     if (s >= threshold) {
       echoStateRef.current = true
       activeMessageRef.current = ''
-      logDebug({ event: 'decision', seg: t, buf: echoBufRef.current, score: Number(s.toFixed(4)), threshold, echoState: wasEcho, note: 'echo' })
+      logDebug({ event: 'decision', seg: t, buf: echoBufRef.current, score: Number(s.toFixed(4)), threshold, echoState: wasEcho, note: `echo len=${bufLen}` })
       // 保留较长的尾巴，保证朗读片段的相似度判定能连续命中
       echoBufRef.current = echoBufRef.current.slice(-100)
       return
@@ -251,10 +280,10 @@ const MockInterviewSession: React.FC = () => {
     echoStateRef.current = false
     echoBufRef.current = ''
     if (now - lastSilentTriggerRef.current < 1500) {
-      logDebug({ event: 'decision', seg: t, score: Number(s.toFixed(4)), threshold, echoState: wasEcho, note: 'dupSkip' })
+      logDebug({ event: 'decision', seg: t, score: Number(s.toFixed(4)), threshold, echoState: wasEcho, note: `dupSkip len=${bufLen}` })
       return
     }
-    logDebug({ event: 'decision', seg: t, score: Number(s.toFixed(4)), threshold, echoState: wasEcho, note: 'question' })
+    logDebug({ event: 'decision', seg: t, score: Number(s.toFixed(4)), threshold, echoState: wasEcho, note: `question len=${bufLen}` })
     lastSilentTriggerRef.current = now
     appendMsg({ id: Date.now(), role: 'interviewer', content: t, created_at: new Date().toISOString() })
     triggerAi(t)
