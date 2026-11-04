@@ -40,6 +40,11 @@ const _normalizeNumbers = (text: string): string =>
     return Number.isNaN(v) ? m : String(v)
   })
 
+// 回音判定时保留的滚动缓冲长度（字符）。跨停顿累计，避免慢读短片段漏判。
+const ECHO_BUF_CAP = 120
+// 转写间隔超过该时长视为「新的一段话」，重置回音缓冲（避免吞掉随后的真实问题）
+const ECHO_GAP_RESET_MS = 3500
+
 const MockInterviewSession: React.FC = () => {
   const { sessionId = '' } = useParams<{ sessionId: string }>()
   const navigate = useNavigate()
@@ -64,6 +69,9 @@ const MockInterviewSession: React.FC = () => {
   const thinkingRef = useRef(false)       // AI 是否正在输出的镜像（供回调读取）
   const aiFinishedAtRef = useRef(0)       // AI 最近一次结束输出的时刻（用于冷却窗口）
   const lastAiContentsRef = useRef<string[]>([])  // 最近几条 AI 回答内容（用于回音去重）
+  const echoBufRef = useRef('')           // 跨停顿累计的转写缓冲（回音判定用）
+  const echoStateRef = useRef(false)      // 是否处于「回音态」（滞回用）
+  const lastChunkAtRef = useRef(0)        // 最近一次收到转写的时刻（用于话语段边界重置）
 
   // 加载会话
   useEffect(() => {
@@ -115,38 +123,44 @@ const MockInterviewSession: React.FC = () => {
         // AI 结束时清空累积缓冲，避免 AI 最后一句的扬声器尾音残留累积后触发假问题。
         // 面试官之后重新开口的问题会重新累积，不受影响。
         activeMessageRef.current = ''
+        echoBufRef.current = ''
+        echoStateRef.current = false
         setThinking(false)
         setCurrentAi('')
       },
     }, 10)
   }, [sessionId])
 
-  // 是否为「朗读 AI 回答」的回音：判断转写内容与最近某条 AI 回答足够相似
-  // 使用 n-gram（3字窗口）集合相似度 + 中文数字归一化，对 ASR 错字/多字/数字写法差异更鲁棒
-  const isEchoOfAi = useCallback((text: string): boolean => {
-    const t = _normalizeNumbers(text.replace(/\s+/g, '').toLowerCase())
-    if (t.length < 8) return false  // 太短不足以可靠判断
+  // 计算「最近转录文本」与「最近 AI 回答」的最大相似度（0~1）。
+  // 用 bigram(0.6) + trigram(0.4) 加权：bigram 对 ASR 错字/多字更鲁棒。
+  const echoScoreOf = useCallback((buf: string): number => {
+    const t = _normalizeNumbers(buf.replace(/[\s\p{P}\p{S}]/gu, '').toLowerCase())
+    if (t.length < 3) return 0
+    let best = 0
     for (const rawAi of lastAiContentsRef.current) {
-      const ai = _normalizeNumbers(rawAi.replace(/\s+/g, '').toLowerCase())
-      if (!ai || ai.length < 8) continue
-      const [small, big] = t.length <= ai.length ? [t, ai] : [ai, t]
-
-      const bigSet = new Set<string>()
-      for (let i = 0; i + 3 <= big.length; i++) bigSet.add(big.slice(i, i + 3))
-
-      let hits = 0, total = 0
-      for (let i = 0; i + 3 <= small.length; i++) {
-        total++
-        if (bigSet.has(small.slice(i, i + 3))) hits++
+      const ai = _normalizeNumbers(rawAi.replace(/[\s\p{P}\p{S}]/gu, '').toLowerCase())
+      if (!ai || ai.length < 4) continue
+      let b2 = 0, t3 = 0
+      // bigram
+      {
+        const set = new Set<string>()
+        for (let i = 0; i + 2 <= ai.length; i++) set.add(ai.slice(i, i + 2))
+        let h = 0, tot = 0
+        for (let i = 0; i + 2 <= t.length; i++) { tot++; if (set.has(t.slice(i, i + 2))) h++ }
+        b2 = tot ? h / tot : 0
       }
-      if (total === 0) continue
-
-      const ratio = hits / total
-      // 转写是 AI 回答的照读时（即使 ASR 有错字、数字写法不同），
-      // 绝大多数 3-gram 仍能命中，比例较高则判定为回音
-      if (ratio >= 0.5) return true
+      // trigram
+      {
+        const set = new Set<string>()
+        for (let i = 0; i + 3 <= ai.length; i++) set.add(ai.slice(i, i + 3))
+        let h = 0, tot = 0
+        for (let i = 0; i + 3 <= t.length; i++) { tot++; if (set.has(t.slice(i, i + 3))) h++ }
+        t3 = tot ? h / tot : 0
+      }
+      const s = 0.6 * b2 + 0.4 * t3
+      if (s > best) best = s
     }
-    return false
+    return best
   }, [])
 
   // 面试官（使用者）说完停顿检测触发
@@ -154,23 +168,30 @@ const MockInterviewSession: React.FC = () => {
     const t = text.trim()
     if (!t) return
     const now = Date.now()
-    // 防抖：5 秒内不重复触发
-    if (now - lastSilentTriggerRef.current < 5000) return
 
-    // 回音去重：转写内容与最近 AI 回答高度重合（用户在朗读 AI 生成的回答）则丢弃，
-    // 避免把 AI 说出的内容又当成面试官输入，形成循环
-    const echo = isEchoOfAi(t)
-    if (echo) {
-      // 丢弃回音，但仍消耗一次触发名额，避免紧接着又被同段回音触发
-      lastSilentTriggerRef.current = now
+    // 1) 回音判定：把本段并入「滚动累计缓冲」后整体比对，解决慢读时
+    //    单个停顿片段太短（<8字）无法判定而漏网的问题。
+    //    注意：回音检测必须先于防抖执行，否则朗读片段会被防抖逻辑悄悄放行。
+    echoBufRef.current = (echoBufRef.current + t).slice(-ECHO_BUF_CAP)
+    const s = echoScoreOf(echoBufRef.current)
+    // 双阈值滞回：一旦进入回音态，用更低阈值维持，避免朗读中零星片段漏出
+    const threshold = echoStateRef.current ? 0.35 : 0.5
+    if (s >= threshold) {
+      echoStateRef.current = true
       activeMessageRef.current = ''
+      // 保留较长的尾巴，保证朗读片段的相似度判定能连续命中
+      echoBufRef.current = echoBufRef.current.slice(-100)
       return
     }
 
+    // 2) 真实问题：防抖只用于避免同一句话被重复触发，不再吞掉真实提问
+    echoStateRef.current = false
+    echoBufRef.current = ''
+    if (now - lastSilentTriggerRef.current < 1500) return
     lastSilentTriggerRef.current = now
     appendMsg({ id: Date.now(), role: 'interviewer', content: t, created_at: new Date().toISOString() })
     triggerAi(t)
-  }, [triggerAi, isEchoOfAi])
+  }, [triggerAi, echoScoreOf])
 
   // 解析转写结果：累积面试官说话内容，停顿(约2.5s)后触发作答
   const handleRtasrResult = useCallback((data: any) => {
@@ -203,8 +224,17 @@ const MockInterviewSession: React.FC = () => {
 
     // AI 刚结束输出后的短冷却窗（约 1 秒），仅吸收 AI 最后一句在扬声器播放的尾音延迟。
     // 长段的朗读回音不靠时间窗处理（会误杀面试官紧接着问的真实问题），
-    // 交给 onSilence 里的内容相似度过滤（isEchoOfAi）去识别。
+    // 交给 onSilence 里的内容相似度过滤（echoScoreOf）去识别。
     if (Date.now() - aiFinishedAtRef.current < 1000) return
+
+    // 话语段边界：距上一次转写超过 3.5 秒，视为新的一段话（用户思考后重新开口）。
+    // 重置回音累计缓冲，避免上一段朗读的残留把随后真实问题一起吞掉。
+    const nowMs = Date.now()
+    if (nowMs - lastChunkAtRef.current > ECHO_GAP_RESET_MS) {
+      echoBufRef.current = ''
+      echoStateRef.current = false
+    }
+    lastChunkAtRef.current = nowMs
 
     activeMessageRef.current += text
 
@@ -262,6 +292,10 @@ const MockInterviewSession: React.FC = () => {
     }, 2000)
     abortRef.current?.abort?.()
     if (silenceTimerRef.current) { window.clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null }
+    // 停止录音时清空回音判定状态
+    echoBufRef.current = ''
+    echoStateRef.current = false
+    lastChunkAtRef.current = 0
   }
 
   useEffect(() => () => {
