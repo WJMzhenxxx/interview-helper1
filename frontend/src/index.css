@@ -3,9 +3,11 @@
   line-height: 1.5;
   font-weight: 400;
 
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
+  /* 强制浅色主题：白底、深色文字，不跟随系统深色模式，
+     避免浅色气泡/卡片上出现白字看不清的问题 */
+  color-scheme: light;
+  color: #1f1f1f;
+  background-color: #ffffff;
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -15,11 +17,11 @@
 
 a {
   font-weight: 500;
-  color: #646cff;
+  color: #1677ff;
   text-decoration: inherit;
 }
 a:hover {
-  color: #535bf2;
+  color: #4096ff;
 }
 
 body {
@@ -29,6 +31,8 @@ body {
   min-height: 100vh;
   width: 100%;
   height: 100vh;
+  color: #1f1f1f;
+  background-color: #ffffff;
 }
 
 #root {
@@ -41,6 +45,7 @@ body {
 h1 {
   font-size: 3.2em;
   line-height: 1.1;
+  color: #1f1f1f;
 }
 
 button {
@@ -50,27 +55,15 @@ button {
   font-size: 1em;
   font-weight: 500;
   font-family: inherit;
-  background-color: #1a1a1a;
+  background-color: #f9f9f9;
+  color: #1f1f1f;
   cursor: pointer;
   transition: border-color 0.25s;
 }
 button:hover {
-  border-color: #646cff;
+  border-color: #1677ff;
 }
 button:focus,
 button:focus-visible {
   outline: 4px auto -webkit-focus-ring-color;
-}
-
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
-  }
-  a:hover {
-    color: #747bff;
-  }
-  button {
-    background-color: #f9f9f9;
-  }
 }
